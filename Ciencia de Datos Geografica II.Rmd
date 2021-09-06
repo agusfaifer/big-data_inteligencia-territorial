@@ -1,0 +1,263 @@
+---
+title: "Ciencia de Datos Geograficas"
+author: "Agustina Faifer"
+date: "18/8/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Tema: Espacios Verdes Públicos en la Ciudad de Buenos Aires. Análisis por Comuna
+- ¿Cuales son los espacios verdes públicos de CABA?  ¿Qué calidad tienen esos espacios verdes?  
+- ¿Qué Comuna posee menos m2 de espacios verdes?
+- ¿Cuánto arbolado poseen las Comunas? De que tipo son?
+
+
+- Como fuente para saber la cantidad total de espacios verdes públicos de la Ciudad de Buenos Aires y el arbolado  utilice los datasets del portal de datos abiertos de la ciudad. 
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(data.table)
+library(readr)
+library(lubridate)
+library(sf)
+library(ggmap)
+library(osmdata)
+
+```
+
+- Cantidad de Espacios verdes publicos por Comuna. Dataset
+
+```{r message=FALSE, warning=FALSE}
+evp <- st_read("https://cdn.buenosaires.gob.ar/datosabiertos/datasets/secretaria-de-desarrollo-urbano/espacios-verdes/espacio-verde-publico.geojson", stringsAsFactors = TRUE)
+
+comunas <- st_read("https://bitsandbricks.github.io/data/CABA_comunas.geojson", stringsAsFactors = TRUE)
+
+```
+
+```{r}
+#summary(evp)
+
+```
+
+
+```{r}
+#summary(comunas)
+```
+
+
+```{r}
+ggplot()+
+  geom_sf(data=comunas, fill="white")+
+  geom_sf(data=evp, 
+          fill = "#3DB483",
+          colour = "transparent")+
+  labs(
+    title = toupper("Espacios Verdes Publicos"),
+    subtitle = toupper("Ciudad de Buenos Aires")
+  ) +
+  theme_void() +
+  theme(
+    plot.margin = unit(c(5, 5, 5, 5), "mm"),
+    panel.spacing = unit(0, "mm"),
+    legend.position = "bottom",
+    legend.justification = "left",
+    plot.caption.position = "panel",
+    plot.title.position = "panel",
+    text = element_text(size = 10, colour = "grey20"),
+    plot.title = element_text(hjust = 0),
+    legend.margin = margin(0, 0, 0, 0),
+    legend.box.margin = margin(-10, -10, -10, -10)
+  )
+```
+
+
+
+- Cantidad de  Espacios verdes publicos por Comuna en m2.
+
+
+```{r message=FALSE, warning=FALSE}
+evp_comunas <- evp %>%
+st_set_geometry(NULL) %>%
+group_by(COMUNA,clasificac) %>%
+summarise(suma = sum(area, na.rm = TRUE))
+```
+
+```{r}
+sum(evp_comunas$suma)
+```
+
+```{r}
+ggplot(evp_comunas) +
+  
+  geom_bar(aes(x = as.factor(COMUNA), weight = suma)) +
+  scale_y_continuous((breaks = seq(0, 100000, 1)))+
+  scale_y_continuous(labels = scales::comma)+
+  
+      coord_flip()+ 
+
+      labs(title = "Distribución de espacios verdes según comuna",
+       x = "Comuna",
+       y = "Espacio verde en m2")+
+  theme_minimal()
+```
+
+
+```{r}
+ggplot(evp_comunas) +
+  
+  geom_bar(aes(x = as.factor(COMUNA), weight = suma, fill = clasificac))+
+  scale_y_continuous((breaks = seq(0, 100000, 1)))+
+  scale_y_continuous(labels = scales::comma)+
+      coord_flip()+
+  
+      labs(title = "Distribución de espacios verdes por comuna",
+       subtitle = "Según clasificación",
+       x = "Comuna",
+       y = "Espacio verde en m2")+
+  theme_minimal()
+```
+
+
+
+
+
+
+
+Conclusión:
+En la Ciudad Autónoma de Buenos Aires (CABA) se detecto un total de más de 16 millones de m² de espacios verdes públicos.S estima que la población de la ciudad es de aproximadamente tres millones de habitantes. Lo que implica que en la CABA se dispone, en promedio, de 5,33 m² de espacio verde per cápita.
+Se puede observar en los graficos que la Comuna 5 es la que tiene menos m2 de espacio verde totales, junto a la Comuna 3.
+
+
+- Cantidad de arbolado en Espacios Verdes publicos por Comuna .
+
+¿Qué calidad tienen los espacios verdes de la CABA? ¿Cuánto arbolado poseen?¿Se puede ponderar la calidad de esos Espacios Verdes? Para el analisis se toma la cantidad de arboles en Espacios Verdes publicos como indicador de calidad del espacio.
+
+
+```{r}
+arbolado_evp <- read.csv("arbolado-en-espacios-verdes.csv", stringsAsFactors = TRUE, encoding = "UTF-8")
+```
+
+
+
+```{r}
+ggplot() +
+  geom_sf(data = comunas,fill= "white") +
+  geom_point(data = arbolado_evp, 
+               aes(x = long, y = lat),
+               alpha = .1,
+               size= 1,
+               color = "#0b7547")+
+  
+     labs(title = toupper("Arbolado de Buenos Aires"),
+         subtitle = toupper("Ciudad Autónoma de Buenos Aires, 2021")) +
+  theme_void() +
+  theme(
+    plot.margin = unit(c(5, 5, 5, 5), "mm"),
+    panel.spacing = unit(0, "mm"),
+    legend.position = "bottom",
+    legend.justification = "left",
+    plot.caption.position = "panel",
+    plot.title.position = "panel",
+    text = element_text(size = 10, colour = "grey20"),
+    plot.title = element_text(hjust = 0),
+    legend.margin = margin(0, 0, 0, 0),
+    legend.box.margin = margin(-10, -10, -10, -10)
+  )
+```
+
+- Hacemos un filtro para sacar entradas sin coordenadas y luego transformamos el dataframe en uno espacial.
+
+```{r}
+arbolado_evp <- arbolado_evp %>% 
+    filter(!is.na(lat), !is.na(long)) %>% 
+    st_as_sf(coords = c("long", "lat"), crs = 4326)
+
+```
+
+- Realizamos el join espacial para poder analizar la cantidad de arboles en espacios verdes por comuna.
+
+```{r}
+arbolado_evp_comunas <- st_join(arbolado_evp, comunas)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+cantidad_folla <- arbolado_evp_comunas %>% 
+    group_by(comunas, tipo_folla, origen) %>% 
+    summarise(cantidad = n())
+
+```
+
+
+
+```{r}
+ggplot(cantidad_folla) +
+  
+  geom_bar(aes(x = as.factor(comunas), weight = cantidad , fill = origen))+
+      coord_flip()+
+  
+      labs(title = "Distribución de arboles en Espacios Verdes segun comuna",
+       subtitle = "Composición por Origen",
+       x = "Comuna",
+       y = "Cantidad de Árboles")+
+  theme_minimal()
+```
+
+
+Podemos observar que las comunas 1, 8 y 14 están muy por encima de las demás en cantidad de árboles por Espacio Verde. Tambien podemos ver que en la mayoría de las comunas hay mas especies aloctonas que arboles nativos.
+
+
+- Para graficar los datos en el mapa, vamos a realizar un join para averiguar la cantidad de arboles en cada comuna.
+
+
+```{r message=FALSE, warning=FALSE}
+cantidad_arb <- arbolado_evp_comunas %>% 
+    group_by(comunas) %>% 
+    summarise(cantidad = n())
+```
+
+- Realizamos el join
+
+```{r}
+cantidad_arb_comunas <- st_join(comunas, cantidad_arb)
+```
+
+
+- Graficamos cantidad de arboles en Espacio Verde por Comuna
+
+```{r message=FALSE, warning=FALSE}
+ggplot() +
+    geom_sf(data = cantidad_arb_comunas, aes(fill = cantidad)) +
+    scale_fill_viridis_c()+
+    
+   geom_sf_label(data = comunas, 
+                 aes(label = comunas)) +
+  
+   theme_void()+
+   theme(text = element_text(size = 10, colour = "grey20"))+
+ 
+     labs(title = "Cantidad de arboles en Espacios Verdes por Comunas",
+         subtitle = "Ciudad Autónoma de Buenos Aires, 2021",
+         fill = "Cantidad",
+         caption = "Fuente: BA Datos")
+```
+
+
+En el mapa se puede observar que la Comuna 5 es la que tiene  menos cantidad de  arboles en Espacios Verdes publicos.Teninedo en cuenta la idea que un espacio verde con arboles tiene mas calidad, que un espacio verde que no los tiene.
+La Comuna 5 y 3 son las que mas déficit de Espacios verdes y arboles tiene de toda la CABA.El proximo paso seria realizar una analisis de isocronas para saber que distancia a pie recorren los habitantes de esas Comunas para poder llegar a un Espacio Verde.
+
+
+
+
+
+
+
+
+
+
+
+
+
